@@ -1,6 +1,8 @@
 package dev.timkloepper.server;
 
 
+import dev.timkloepper.util.PrintColors;
+
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.channels.Selector;
@@ -47,13 +49,16 @@ public class ServerManager {
         _INFOS.put(id, info);
 
         server.p_initUpdateLoop(id);
+        server.p_attachInitialAttachments();
+
+        ServerManager.log(id, PrintColors.GREEN + "Created!" + PrintColors.RESET);
 
         return server;
     }
     protected static boolean p_close(int id) {
         ServerInfo info;
 
-        info = _INFOS.remove(id);
+        info = _INFOS.get(id);
         if (info == null) return false;
 
         try {
@@ -69,15 +74,17 @@ public class ServerManager {
             if (socket != null) {
                 socket.close();
             }
+            for (I_Attachment attachment : info.ATTACHMENTS) attachment.detach();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
-        if (info.port != -1) System.out.println("[SERVER (id:" + id + ")] Booted down from port " + info.port + "!");
+        if (info.port != -1) log(id, PrintColors.YELLOW + "Booted down from port " + PrintColors.UNDERLINE + PrintColors.WHITE + info.port + PrintColors.RESET + PrintColors.YELLOW + "!" + PrintColors.RESET);
+        log(id, PrintColors.YELLOW + "Closed!" + PrintColors.RESET);
+
+        _INFOS.remove(id);
 
         if (!_FREE_IDS.contains(id)) _FREE_IDS.add(id);
-
-        System.out.println("[SERVER (id:" + id + ")] ! CLOSED  !");
 
         return true;
     }
@@ -98,6 +105,22 @@ public class ServerManager {
 
         info.port = port;
     }
+    protected static void p_addAttachment(int id, I_Attachment attachment) {
+        ServerInfo info;
+
+        info = _INFOS.get(id);
+        if (info == null) return;
+
+        info.ATTACHMENTS.add(attachment);
+    }
+    protected static void p_rmvAttachment(int id, I_Attachment attachment) {
+        ServerInfo info;
+
+        info = _INFOS.get(id);
+        if (info == null) return;
+
+        info.ATTACHMENTS.remove(attachment);
+    }
 
     protected static boolean p_isAlive(int id) {
         ServerInfo info;
@@ -115,6 +138,46 @@ public class ServerManager {
     }
 
 
+    // -+- LOGGING LOGIC -+- //
+
+    public static boolean log(int id, String message) {
+        if (!_INFOS.containsKey(id)) return log(message);
+
+        System.out.println(PrintColors.PURPLE + "[SERVER MANAGER]" + PrintColors.CYAN + "[SERVER::" + id + "]" + PrintColors.RESET + " " + message);
+
+        return true;
+    }
+    public static boolean log(int id, String[] tags, String message) {
+        StringBuilder tagsString;
+
+        if (!_INFOS.containsKey(id)) return log(tags, message);
+
+        tagsString = new StringBuilder();
+
+        for (String tag : tags) tagsString.append("[").append(tag).append("]");
+
+        System.out.println(PrintColors.PURPLE + "[SERVER MANAGER]" + PrintColors.CYAN + "[SERVER::" + id + "]" + PrintColors.RESET + tagsString + " " + message);
+
+        return true;
+    }
+    public static boolean log(String message) {
+        System.out.println(PrintColors.PURPLE + "[SERVER MANAGER]" + PrintColors.CYAN + "[SERVER::UNKNOWN]" + PrintColors.RESET + " " + message);
+
+        return true;
+    }
+    public static boolean log(String[] tags, String message) {
+        StringBuilder tagsString;
+
+        tagsString = new StringBuilder();
+
+        for (String tag : tags) tagsString.append("[").append(tag).append("]");
+
+        System.out.println(PrintColors.PURPLE + "[SERVER MANAGER]" + PrintColors.CYAN + "[SERVER::UNKNOWN]" + PrintColors.RESET + tagsString + " " + message);
+
+        return true;
+    }
+
+
 }
 
 
@@ -126,6 +189,8 @@ class ServerInfo {
     public ServerInfo(WeakReference<Server> serverRef, Selector selector) {
         SERVER_REFERENCE = serverRef;
         SELECTOR = selector;
+
+        ATTACHMENTS = new ConcurrentLinkedDeque<>();
     }
 
 
@@ -140,6 +205,8 @@ class ServerInfo {
 
     public final WeakReference<Server> SERVER_REFERENCE;
     public final Selector SELECTOR;
+
+    public final ConcurrentLinkedDeque<I_Attachment> ATTACHMENTS;
 
 
 }

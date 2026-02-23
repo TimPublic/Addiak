@@ -6,7 +6,7 @@ public interface I_Attachment {
     // -+- ATTACHMENT LOGIC -+- //
 
     void attach(Server server);
-    void detach(Server server);
+    void detach();
 
 
 }

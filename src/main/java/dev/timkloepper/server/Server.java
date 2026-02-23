@@ -2,7 +2,9 @@ package dev.timkloepper.server;
 
 
 import dev.timkloepper.server.logicals.I_Logical;
+import dev.timkloepper.server.services.Acceptor;
 import dev.timkloepper.server.services.I_Service;
+import dev.timkloepper.util.PrintColors;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -21,8 +23,6 @@ public class Server {
 
     protected Server() {
         _currentPort = -1;
-
-        _closed = false;
 
         try {
             p_SELECTOR = Selector.open();
@@ -57,11 +57,6 @@ public class Server {
 
                 server = REFERENCE.get();
                 if (server == null) break;
-                if (server._closed) {
-                    server = null;
-
-                    break;
-                }
 
                 if (!server.isRunning()) {
                     server = null;
@@ -76,13 +71,14 @@ public class Server {
 
         }).start();
     }
+    protected void p_attachInitialAttachments() {
+        attach(new Acceptor());
+    }
 
     public static Server create() {
         Server server;
 
         server = ServerManager.p_create();
-
-        System.out.println("[SERVER (id:" + server._managementId + ")] ! CREATED !");
 
         return server;
     }
@@ -96,10 +92,7 @@ public class Server {
     }
 
     public void close() {
-        down();
         ServerManager.p_close(_managementId);
-
-        _closed = true;
     }
 
 
@@ -109,8 +102,6 @@ public class Server {
 
     private int _currentPort;
     protected ServerSocketChannel _socket;
-
-    private boolean _closed;
 
     private int _managementId;
 
@@ -140,19 +131,17 @@ public class Server {
 
         _currentPort = port;
 
+        ServerManager.log(_managementId, PrintColors.GREEN + "Booted up on port " + PrintColors.UNDERLINE + PrintColors.WHITE + _currentPort + PrintColors.RESET + PrintColors.GREEN + "!" + PrintColors.RESET);
+
         ServerManager.p_updateSocket(_managementId, _socket);
         ServerManager.p_updatePort(_managementId, _currentPort);
 
         h_activateServices();
         h_activateLogicals();
 
-        System.out.println("[SERVER (id:" + _managementId + ")] Booted up on port " + _currentPort + "!");
-
         return true;
     }
     public boolean down() {
-        int prevPort;
-
         if (!isRunning()) return false;
 
         try {
@@ -162,7 +151,8 @@ public class Server {
             return false;
         }
 
-        prevPort = _currentPort;
+        ServerManager.log(_managementId, PrintColors.YELLOW + "Booted down from port " + PrintColors.UNDERLINE + PrintColors.WHITE + _currentPort + PrintColors.RESET + PrintColors.YELLOW + "!" + PrintColors.RESET);
+
         _currentPort = -1;
 
         ServerManager.p_updateSocket(_managementId, _socket);
@@ -170,8 +160,6 @@ public class Server {
 
         h_deactivateServices();
         h_deactivateLogicals();
-
-        System.out.println("[SERVER (id:" + _managementId + ")] Booted down from port " + prevPort + "!");
 
         return true;
     }
@@ -183,6 +171,12 @@ public class Server {
     public int getPort() {
         return _currentPort;
     }
+    public ServerSocketChannel getSocket() {
+        return _socket;
+    }
+    public int getId() {
+        return _managementId;
+    }
 
 
     // -+- ATTACHMENT LOGIC -+- //
@@ -193,6 +187,8 @@ public class Server {
 
         service.attach(this);
 
+        ServerManager.p_addAttachment(_managementId, service);
+
         return _SERVICES.add(service); // Always returns true (look in the method description).
     }
     public boolean attach(I_Logical logical) {
@@ -201,6 +197,8 @@ public class Server {
 
         logical.attach(this);
 
+        ServerManager.p_addAttachment(_managementId, logical);
+
         return _LOGICALS.add(logical); // Always returns true (look in the method description).
     }
 
@@ -208,7 +206,9 @@ public class Server {
         if (service == null) return false;
 
         service.deactivate(this);
-        service.detach(this);
+        service.detach();
+
+        ServerManager.p_rmvAttachment(_managementId, service);
 
         return _SERVICES.remove(service);
     }
@@ -216,7 +216,9 @@ public class Server {
         if (logical == null) return false;
 
         logical.deactivate(this);
-        logical.detach(this);
+        logical.detach();
+
+        ServerManager.p_rmvAttachment(_managementId, logical);
 
         return _LOGICALS.remove(logical);
     }
